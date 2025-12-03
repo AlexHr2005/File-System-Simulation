@@ -18,6 +18,5 @@ struct FileEntry {
 struct FileDataBlock {
     char* data;
     int refCount;
-    uint64_t offsetOfNextBlockInFile;
     uint64_t offsetOfNextBlockInTable;
 };
