@@ -2,17 +2,16 @@
 #include <stdbool.h>
 
 enum FileType {
-    _FILE,
-    _DIRECTORY
+    _FILE = 0,
+    _DIRECTORY = 1
 };
 
 struct FileEntry {
     char name[20];
     enum FileType type;
     bool is_deleted;
-    uint64_t offsetOfFirstBlock;
-    uint64_t offsetOfLastBlock;
     uint64_t offsetOfNextFile;
+    uint64_t blocksOffsets[1000];
 };
 
 struct FileDataBlock {

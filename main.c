@@ -8,6 +8,7 @@
 const char containerName[] = "file_system.bin";
 char commandLineSyntax[] = "/$ ";
 int blockSize = -1;
+uint64_t firstFileEntry = -1;
 uint64_t nextFreeFileEntry = -1;
 uint64_t nextFreeBlock = -1;
 uint64_t eof = -1;
@@ -17,16 +18,20 @@ void loadMetadata(FILE* container) {
         fseek(container, 0, SEEK_SET);
         fread(&blockSize, sizeof(int), 1, container);
     }
-    if(-1 == nextFreeFileEntry) {
+    if(-1 == firstFileEntry) {
         fseek(container, 4, SEEK_SET);
+        fread(&firstFileEntry, sizeof(uint64_t), 1, container);
+    }
+    if(-1 == nextFreeFileEntry) {
+        fseek(container, 12, SEEK_SET);
         fread(&nextFreeFileEntry, sizeof(uint64_t), 1, container);
     }
     if(-1 == nextFreeBlock) {
-        fseek(container, 12, SEEK_SET);
+        fseek(container, 20, SEEK_SET);
         fread(&nextFreeBlock, sizeof(uint64_t), 1, container);
     }
     if(-1 == eof) {
-        fseek(container, 20, SEEK_SET);
+        fseek(container, 28, SEEK_SET);
         fread(&eof, sizeof(uint64_t), 1, container);
     }
 }
@@ -34,6 +39,8 @@ void loadMetadata(FILE* container) {
 void writeMetadata(FILE* container) {
     fseek(container, 0, SEEK_SET);
     fwrite(&blockSize, sizeof(int), 1, container);
+
+    fwrite(&firstFileEntry, sizeof(uint64_t), 1, container);
 
     //fseek(container, 4, SEEK_SET);
     fwrite(&nextFreeFileEntry, sizeof(uint64_t), 1, container);
@@ -63,7 +70,9 @@ void initializeContainer(FILE** container) {
 
     fwrite(&blockSize, sizeof(int), 1, *container);
 
-    uint64_t offsetFromStart = sizeof(int) + 3 * sizeof(uint64_t) + 100 * sizeof(uint64_t); // the offset of next av. place for storing file entry
+    uint64_t offsetFromStart = -1; // offset of first file entry
+    fwrite(&offsetFromStart, sizeof(uint64_t), 1, *container);
+    offsetFromStart = sizeof(int) + 4 * sizeof(uint64_t) + 100 * sizeof(uint64_t); // the offset of next av. place for storing file entry
     fwrite(&offsetFromStart, sizeof(uint64_t), 1, *container);
     // the offset of next av. place for storing file data block
     fwrite(&offsetFromStart, sizeof(uint64_t), 1, *container);
@@ -130,7 +139,7 @@ void runContainer(FILE* container) {
         currElement[currWriteIndex] = '\0';
 
         if(!strcmp(inputElements[0], "cpin")) {
-            if(-1 == cpin(inputElements, container, blockSize, &nextFreeBlock, &nextFreeFileEntry, &eof)) {
+            if(-1 == cpin(inputElements, container, blockSize, &firstFileEntry, &nextFreeBlock, &nextFreeFileEntry, &eof)) {
                 return;
             }
         }

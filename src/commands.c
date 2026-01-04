@@ -26,6 +26,20 @@ void updateNextFreeBlock(uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, u
     }
 }
 
+void updateNextFreeFileEntry(uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof, int blockSize) {
+    if(*nextFreeFileEntry == *eof) {
+        *eof += (20 * sizeof(char) + 2 * sizeof(uint8_t) + 1001 * sizeof(uint64_t));
+        *nextFreeFileEntry = *eof;
+
+        if(*nextFreeBlock == *eof - (20 * sizeof(char) + 2 * sizeof(uint8_t) + 1001 * sizeof(uint64_t))) {
+            *nextFreeBlock = *eof;
+        }
+    }
+    else {
+
+    }
+}
+
 void writeBlockAtOffset(char data[], int blockSize, int refCount, FILE* container, uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof) {
     fseek(container, *nextFreeBlock, SEEK_SET);
     fwrite(data, sizeof(char), blockSize, container);
@@ -36,9 +50,9 @@ void writeBlockAtOffset(char data[], int blockSize, int refCount, FILE* containe
 }
 
 void printHashTable(FILE* container, int blockSize) {
-    fseek(container, 28, SEEK_SET);
+    fseek(container, 36, SEEK_SET);
     for(int i = 0; i < 100; i++) {
-        fseek(container, 28 + i * sizeof(uint64_t), SEEK_SET);
+        fseek(container, 36 + i * sizeof(uint64_t), SEEK_SET);
         printf("HASH: %d\n", i);
         uint64_t offset;
         fread(&offset, sizeof(uint64_t), 1, container);
@@ -62,8 +76,7 @@ void printHashTable(FILE* container, int blockSize) {
     }
 }
 
-int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof) {
-    // 5. Write new entry
+int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFileEntry, uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof) {
 
     // 1. Open new file
     FILE* sourceFile = fopen(inputElements[1], "rb");
@@ -74,6 +87,50 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* nextFre
             inputElements[1] 
         );
         return -1;
+    }
+
+    // 5. Write new
+    if(-1 == *firstFileEntry) {
+        printf("First file in fs\n");
+        fseek(container, *nextFreeFileEntry, SEEK_SET);
+        fwrite(inputElements[1], sizeof(char), 20, container);
+        uint8_t type = 1;
+        fwrite(&type, sizeof(uint8_t), 1, container);
+        uint8_t is_deleted = 0;
+        fwrite(&is_deleted, sizeof(uint8_t), 1, container);
+        fwrite(firstFileEntry, sizeof(uint64_t), 1, container);
+        *firstFileEntry = *nextFreeFileEntry;
+        updateNextFreeFileEntry(nextFreeBlock, nextFreeFileEntry, eof, blockSize);
+    }
+    else {
+        printf("Not first file in fs\n");
+        uint64_t prevFileEntry = *firstFileEntry;
+        uint64_t currFileEntry = *firstFileEntry;
+        while(-1 != currFileEntry) {
+            char fileName[20];
+            fseek(container, currFileEntry, SEEK_SET);
+            fread(fileName, sizeof(char), 20, container);
+            printf("/////// %s\n", fileName);
+            printf("////////////// %s\n", inputElements[1]);
+            if(!strcmp(inputElements[1], fileName)) {
+                printf("File with name '%s' already exists.\n", inputElements[1]);
+                fclose(sourceFile);
+                return 1;
+            }
+            prevFileEntry = currFileEntry;
+            fseek(container, 2 * sizeof(uint8_t), SEEK_CUR);
+            fread(&currFileEntry, sizeof(uint64_t), 1, container);
+        }
+        fseek(container, *nextFreeFileEntry, SEEK_SET);
+        fwrite(inputElements[1], sizeof(char), 20, container);
+        uint8_t type = 1;
+        fwrite(&type, sizeof(uint8_t), 1, container);
+        uint8_t is_deleted = 0;
+        fwrite(&is_deleted, sizeof(uint8_t), 1, container);
+        fwrite(&currFileEntry, sizeof(uint64_t), 1, container);
+        fseek(container, prevFileEntry + 20 + 2 * sizeof(uint8_t), SEEK_SET);
+        fwrite(nextFreeFileEntry, sizeof(uint64_t), 1, container);
+        updateNextFreeFileEntry(nextFreeBlock, nextFreeFileEntry, eof, blockSize);
     }
 
     // 2. Get trough the new file, splitting it into blocks along the way
@@ -95,7 +152,7 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* nextFre
         hash = getBlockHash(buffer, blockSize);
         printf("hash: %d\n", hash);
         
-        uint64_t bucketOffset = sizeof(int) + 3 * sizeof(uint64_t) + hash * sizeof(uint64_t);
+        uint64_t bucketOffset = sizeof(int) + 4 * sizeof(uint64_t) + hash * sizeof(uint64_t);
         fseek(container, bucketOffset, SEEK_SET);
         uint64_t bucketElement;
         fread(&bucketElement, sizeof(uint64_t), 1, container);
@@ -107,7 +164,7 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* nextFre
             block.refCount = 1;
             // 4. Write new blocks
             writeBlockAtOffset(buffer, blockSize, 1, container, nextFreeBlock, nextFreeFileEntry, eof);
-            fseek(container, 28, SEEK_SET);
+            fseek(container, 36, SEEK_SET);
             uint64_t n;
             for(int i = 0; i < 100; i++) {
                 fread(&n, sizeof(uint64_t), 1, container);
@@ -122,7 +179,14 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* nextFre
                 fseek(container, offsetCurrBlock, SEEK_SET);
                 char data[blockSize];
                 fread(data, sizeof(char), blockSize, container);
-                if(!strcmp(data, buffer)) {
+                char datacpy[5];
+                char buffercpy[5];
+                strcpy(datacpy, data);
+                strcpy(buffercpy, buffer);
+                datacpy[4] = '\0';
+                buffercpy[4] = '\0';
+                printf("data: '%s'\nbuffer: '%s'\n", datacpy, buffercpy);
+                if(!strncmp(data, buffer, blockSize)) {
                     fread(&block.refCount, sizeof(int), 1, container);
                     block.refCount++;
                     fseek(container, -sizeof(int), SEEK_CUR);
@@ -147,6 +211,8 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* nextFre
     fflush(container);
     printf("_________________________________________________________\n");
     printHashTable(container, blockSize);
+
+    uint64_t prevFileEntry;
 
     return 0;
 }
