@@ -111,7 +111,6 @@ void runContainer(FILE* container) {
                 errors = true;
                 break;
             }
-            printf("c: %c\n", c);
             // TODO: split the input into command and it's parameters
             if(c == ' ') {
                 currElement[currWriteIndex] = '\0';
@@ -142,6 +141,9 @@ void runContainer(FILE* container) {
             if(-1 == cpin(inputElements, container, blockSize, &firstFileEntry, &nextFreeBlock, &nextFreeFileEntry, &eof)) {
                 return;
             }
+        }
+        else if(!strcmp(inputElements[0], "ls")) {
+            ls(container, &firstFileEntry);
         }
         writeMetadata(container);
         fflush(container);

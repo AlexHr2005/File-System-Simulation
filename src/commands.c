@@ -76,6 +76,20 @@ void printHashTable(FILE* container, int blockSize) {
     }
 }
 
+void ls(FILE* container, uint64_t* firstFileEntry) {
+    uint64_t currFileEntry = *firstFileEntry;
+    while (-1 != currFileEntry)
+    {
+        fseek(container, currFileEntry, SEEK_SET);
+        char fileName[20];
+        fread(fileName, sizeof(char), 20, container);
+        printf("%s\n", fileName);
+        fseek(container, 2 * sizeof(uint8_t), SEEK_CUR);
+        fread(&currFileEntry, sizeof(uint64_t), 1, container);
+    }
+    
+}
+
 int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFileEntry, uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof) {
 
     // 1. Open new file
@@ -91,7 +105,6 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
 
     // 5. Write new
     if(-1 == *firstFileEntry) {
-        printf("First file in fs\n");
         fseek(container, *nextFreeFileEntry, SEEK_SET);
         fwrite(inputElements[1], sizeof(char), 20, container);
         uint8_t type = 1;
@@ -103,15 +116,12 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
         updateNextFreeFileEntry(nextFreeBlock, nextFreeFileEntry, eof, blockSize);
     }
     else {
-        printf("Not first file in fs\n");
         uint64_t prevFileEntry = *firstFileEntry;
         uint64_t currFileEntry = *firstFileEntry;
         while(-1 != currFileEntry) {
             char fileName[20];
             fseek(container, currFileEntry, SEEK_SET);
-            fread(fileName, sizeof(char), 20, container);
-            printf("/////// %s\n", fileName);
-            printf("////////////// %s\n", inputElements[1]);
+            fread(fileName, sizeof(char), 20, container);       
             if(!strcmp(inputElements[1], fileName)) {
                 printf("File with name '%s' already exists.\n", inputElements[1]);
                 fclose(sourceFile);
@@ -179,13 +189,6 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
                 fseek(container, offsetCurrBlock, SEEK_SET);
                 char data[blockSize];
                 fread(data, sizeof(char), blockSize, container);
-                char datacpy[5];
-                char buffercpy[5];
-                strcpy(datacpy, data);
-                strcpy(buffercpy, buffer);
-                datacpy[4] = '\0';
-                buffercpy[4] = '\0';
-                printf("data: '%s'\nbuffer: '%s'\n", datacpy, buffercpy);
                 if(!strncmp(data, buffer, blockSize)) {
                     fread(&block.refCount, sizeof(int), 1, container);
                     block.refCount++;
