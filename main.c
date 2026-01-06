@@ -139,11 +139,14 @@ void runContainer(FILE* container) {
 
         if(!strcmp(inputElements[0], "cpin")) {
             if(-1 == cpin(inputElements, container, blockSize, &firstFileEntry, &nextFreeBlock, &nextFreeFileEntry, &eof)) {
-                return;
+                //return;
             }
         }
         else if(!strcmp(inputElements[0], "ls")) {
             ls(container, &firstFileEntry);
+        }
+        else if(!strcmp(inputElements[0], "cat")) {
+            cat(container, inputElements, &firstFileEntry, blockSize);
         }
         writeMetadata(container);
         fflush(container);

@@ -76,6 +76,39 @@ void printHashTable(FILE* container, int blockSize) {
     }
 }
 
+void cat(FILE* container, char** inputElements, uint64_t* firstFileEntry, int blockSize) {
+    char* fileName = inputElements[1];
+    uint64_t currFileEntry = *firstFileEntry;
+    while (-1 != currFileEntry)
+    {
+        fseek(container, currFileEntry, SEEK_SET);
+        char fileName[20];
+        fread(fileName, sizeof(char), 20, container);
+        fseek(container, 2 * sizeof(uint8_t), SEEK_CUR);
+        if(!strcmp(fileName, inputElements[1])) {
+            int currBlockIndex = 0;
+            uint64_t currBlockOffset;
+            fseek(container, sizeof(uint64_t), SEEK_CUR);
+            fread(&currBlockOffset, sizeof(uint64_t), 1, container);
+            while(-1 != currBlockOffset)
+            {
+                //printf("%ld\n", currBlockOffset);
+                fseek(container, currBlockOffset, SEEK_SET);
+                char block[blockSize + 1];
+                fread(block, sizeof(char), blockSize, container);
+                block[blockSize] = '\0';
+                printf("%s", block);
+                currBlockIndex++;
+                fseek(container, currFileEntry + 20 * sizeof(char) + 2 * sizeof(uint8_t) + (currBlockIndex + 1) * sizeof(uint64_t), SEEK_SET);
+                fread(&currBlockOffset, sizeof(uint64_t), 1, container);
+            }
+            printf("\n");
+            break;
+        }
+        else fread(&currFileEntry, sizeof(uint64_t), 1, container);
+    }
+}
+
 void ls(FILE* container, uint64_t* firstFileEntry) {
     uint64_t currFileEntry = *firstFileEntry;
     while (-1 != currFileEntry)
@@ -102,7 +135,7 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
         );
         return -1;
     }
-
+    uint64_t currFileEntry = *firstFileEntry;
     // 5. Write new
     if(-1 == *firstFileEntry) {
         fseek(container, *nextFreeFileEntry, SEEK_SET);
@@ -113,11 +146,11 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
         fwrite(&is_deleted, sizeof(uint8_t), 1, container);
         fwrite(firstFileEntry, sizeof(uint64_t), 1, container);
         *firstFileEntry = *nextFreeFileEntry;
+        currFileEntry = *nextFreeFileEntry;
         updateNextFreeFileEntry(nextFreeBlock, nextFreeFileEntry, eof, blockSize);
     }
     else {
         uint64_t prevFileEntry = *firstFileEntry;
-        uint64_t currFileEntry = *firstFileEntry;
         while(-1 != currFileEntry) {
             char fileName[20];
             fseek(container, currFileEntry, SEEK_SET);
@@ -140,6 +173,7 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
         fwrite(&currFileEntry, sizeof(uint64_t), 1, container);
         fseek(container, prevFileEntry + 20 + 2 * sizeof(uint8_t), SEEK_SET);
         fwrite(nextFreeFileEntry, sizeof(uint64_t), 1, container);
+        currFileEntry = *nextFreeFileEntry;
         updateNextFreeFileEntry(nextFreeBlock, nextFreeFileEntry, eof, blockSize);
     }
 
@@ -152,6 +186,7 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
     int hash;
     uint64_t offsetCurrBlock;
     uint64_t offsetLastBlock;
+    int blockIndex = 0;
     while(fread(buffer, sizeof(char), blockSize, sourceFile) > 0) {
         printf("block free: %ld, entry free: %ld, eof: %ld\n", *nextFreeBlock, *nextFreeFileEntry, *eof);
         bool blockExists = false;
@@ -180,6 +215,10 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
                 fread(&n, sizeof(uint64_t), 1, container);
                 printf("%d %ld\n", i, n);
             }
+            fseek(container, currFileEntry + 20 * sizeof(char) + 2 * sizeof(uint8_t) + (1 + blockIndex) * sizeof(uint64_t), SEEK_SET);
+            printf("OFFSET OF CURR BLOCK TO BE WRITTEN TO THE FILE: %ld\n", offsetCurrBlock);
+            fwrite(&offsetCurrBlock, sizeof(uint64_t), 1, container);
+            blockIndex++;
             continue;
         }
         else {
@@ -210,7 +249,13 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
             fseek(container, offsetLastBlock + blockSize + sizeof(int), SEEK_SET);
             fwrite(&offsetCurrBlock, sizeof(uint64_t), 1, container);
         }
+        fseek(container, currFileEntry + 20 * sizeof(char) + 2 * sizeof(uint8_t) + (1 + blockIndex) * sizeof(uint64_t), SEEK_SET);
+        printf("OFFSET OF CURR BLOCK TO BE WRITTEN TO THE FILE: %ld\n", offsetCurrBlock);
+        fwrite(&offsetCurrBlock, sizeof(uint64_t), 1, container);
+        blockIndex++;
     }
+    uint64_t blocksEnd = -1;
+    fwrite(&blocksEnd, sizeof(uint64_t), 1, container);
     fflush(container);
     printf("_________________________________________________________\n");
     printHashTable(container, blockSize);
