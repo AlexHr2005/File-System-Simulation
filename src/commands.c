@@ -12,7 +12,7 @@ int getBlockHash(char* block, int blockSize) {
     return sum;
 }
 
-void updateNextFreeBlock(uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof, int blockSize) {
+void updateNextFreeBlock(uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof, int blockSize, FILE* container) {
     if(*nextFreeBlock == *eof) {
         *eof += (blockSize * sizeof(char) + sizeof(int) + sizeof(uint64_t));
         *nextFreeBlock = *eof;
@@ -22,11 +22,15 @@ void updateNextFreeBlock(uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, u
         }
     }
     else {
-
+        fseek(container, *nextFreeBlock, SEEK_SET);
+        fseek(container, blockSize * sizeof(char) + sizeof(int), SEEK_CUR);
+        uint64_t nextBlock;
+        fread(&nextBlock, sizeof(uint64_t), 1, container);
+        *nextFreeBlock = nextBlock;
     }
 }
 
-void updateNextFreeFileEntry(uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof, int blockSize) {
+void updateNextFreeFileEntry(uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof, int blockSize, FILE* container) {
     if(*nextFreeFileEntry == *eof) {
         *eof += (20 * sizeof(char) + 2 * sizeof(uint8_t) + 1001 * sizeof(uint64_t));
         *nextFreeFileEntry = *eof;
@@ -36,7 +40,13 @@ void updateNextFreeFileEntry(uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntr
         }
     }
     else {
-
+        printf("HERE\n");
+        printf("^ %ld\n", *nextFreeFileEntry);
+        fseek(container, *nextFreeFileEntry, SEEK_SET);
+        fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
+        uint64_t nextFreeFile;
+        fread(&nextFreeFile, sizeof(uint64_t), 1, container);
+        *nextFreeFileEntry = nextFreeFile;
     }
 }
 
@@ -44,9 +54,12 @@ void writeBlockAtOffset(char data[], int blockSize, int refCount, FILE* containe
     fseek(container, *nextFreeBlock, SEEK_SET);
     fwrite(data, sizeof(char), blockSize, container);
     fwrite(&refCount, sizeof(int), 1, container);
+    uint64_t currBlock = *nextFreeBlock;
+    updateNextFreeBlock(nextFreeBlock, nextFreeFileEntry, eof, blockSize, container);
+    fseek(container, currBlock, SEEK_SET);
+    fseek(container, blockSize * sizeof(char) + sizeof(int), SEEK_CUR);
     uint64_t offset = -1;
     fwrite(&offset, sizeof(uint64_t), 1, container);
-    updateNextFreeBlock(nextFreeBlock, nextFreeFileEntry, eof, blockSize);
 }
 
 void printHashTable(FILE* container, int blockSize) {
@@ -123,6 +136,147 @@ void ls(FILE* container, uint64_t* firstFileEntry) {
     
 }
 
+void removeBlockFromHashTable(FILE* container, int blockSize, uint64_t block) {
+    fseek(container, block, SEEK_SET);
+    char data[blockSize];
+    fread(data, sizeof(char), blockSize, container);
+    int hash = getBlockHash(data, blockSize);
+    fseek(container, sizeof(int) + 4 * sizeof(uint64_t) + hash * sizeof(uint64_t), SEEK_SET);
+    printf("\nhash: %d\nbucket offset: %ld\n", hash, sizeof(int) + 4 * sizeof(uint64_t) + hash * sizeof(uint64_t));
+    uint64_t currBlock;
+    uint64_t prevBlock = -1;
+    fread(&currBlock, sizeof(uint64_t), 1, container);
+    printf("curr block: %ld\n", currBlock);
+    while(-1 != currBlock) {
+        //printf("THERE IS A BLOCK\n");
+        char currBlockData[4];
+        fseek(container, currBlock, SEEK_SET);
+        fread(currBlockData, sizeof(char), blockSize, container);
+        if(!strncmp(data, currBlockData, blockSize)) {
+            printf("FOUND THE BLOCK\n");
+            uint64_t nextBlock;
+            fseek(container, sizeof(int), SEEK_CUR);
+            fread(&nextBlock, sizeof(uint64_t), 1, container);
+            if(-1 == nextBlock && -1 == prevBlock) {
+                printf("Only block in bucket\n");
+                fseek(container, sizeof(int) + 4 * sizeof(uint64_t) + hash * sizeof(uint64_t), SEEK_SET);
+                currBlock = -1;
+                fwrite(&currBlock, sizeof(uint64_t), 1, container);
+                //printf("Bucket offset: %ld\n", sizeof(int) + 4 * sizeof(uint64_t) + hash * sizeof(uint64_t));
+            }
+            else {
+                if(-1 != prevBlock) {
+                    printf("prev: %ld\nnext:%ld\n", prevBlock, nextBlock);
+                    fseek(container, prevBlock, SEEK_SET);
+                    fseek(container, blockSize * sizeof(char) + sizeof(int), SEEK_CUR);
+                    fwrite(&nextBlock, sizeof(uint64_t), 1, container);
+                }
+                else {
+                    fseek(container, sizeof(int) + 4 * sizeof(uint64_t) + hash * sizeof(uint64_t), SEEK_SET);
+                    fwrite(&nextBlock, sizeof(uint64_t), 1, container);
+                }
+            }
+            printf("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");
+            return;
+        }
+        else {
+            prevBlock = currBlock;
+            fseek(container, sizeof(int), SEEK_CUR);
+            fread(&currBlock, sizeof(uint64_t), 1, container);
+        }
+        printf("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");
+    }
+}
+
+void rm(FILE* container, char** inputElements, uint64_t* firstFileEntry, uint64_t* nextFreeFileEntry, uint64_t* nextFreeBlock, int blockSize, uint64_t* eof) {
+    char* fileName = inputElements[1];
+    uint64_t currFileEntry = *firstFileEntry;
+    uint64_t prevFileEntry = -1;
+    while (-1 != currFileEntry) {
+        fseek(container, currFileEntry, SEEK_SET);
+        char fileName[20];
+        fread(fileName, sizeof(char), 20, container);
+        if(!strcmp(fileName, inputElements[1])) {
+            fseek(container, sizeof(uint8_t), SEEK_CUR);
+            uint8_t is_deleted = 1;
+            fwrite(&is_deleted, sizeof(uint8_t), 1, container);
+
+            // removing current from list of used file entries
+            uint64_t nextFileEntry;
+            fread(&nextFileEntry, sizeof(uint64_t), 1, container);
+            if(-1 != prevFileEntry) {
+                fseek(container, prevFileEntry, SEEK_SET);
+                fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
+                fwrite(&nextFileEntry, sizeof(uint64_t), 1, container);
+            }
+            else *firstFileEntry = nextFileEntry;
+
+            // adding current to list of deleted (free to use) file entries
+            fseek(container, currFileEntry, SEEK_SET);
+            fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
+            fwrite(nextFreeFileEntry, sizeof(uint64_t), 1, container);
+            *nextFreeFileEntry = currFileEntry;
+
+            // adding current's blocks to the list of free to use blocks, if they are not referenced to by any file
+            uint64_t currBlock;
+            int blockIndex = 0;
+            fread(&currBlock, sizeof(uint64_t), 1, container);
+            while(-1 != currBlock) {
+                printf("CURRENT BLOCK: %ld", currBlock);
+                fseek(container, currBlock, SEEK_SET);
+                fseek(container, blockSize * sizeof(char), SEEK_CUR);
+                int refCount;
+                fread(&refCount, sizeof(int), 1, container);
+                refCount--;
+                fseek(container, -sizeof(int), SEEK_CUR);
+                fwrite(&refCount, sizeof(int), 1, container);
+                if(0 == refCount) {
+                    removeBlockFromHashTable(container, blockSize, currBlock);
+                    fseek(container, currBlock, SEEK_SET);
+                    printf("next free block before: %ld\n", *nextFreeBlock);
+                    fseek(container, blockSize * sizeof(char) + sizeof(int), SEEK_CUR);
+                    fwrite(nextFreeBlock, sizeof(uint64_t), 1, container);
+                    *nextFreeBlock = currBlock;
+                    printf("next free block after: %ld\n", *nextFreeBlock);
+                }
+                blockIndex++;
+                fseek(container, currFileEntry, SEEK_SET);
+                fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t) + (blockIndex + 1) * sizeof(uint64_t), SEEK_CUR);
+                fread(&currBlock, sizeof(uint64_t), 1, container);
+            }
+            break;
+        }
+        else {
+            fseek(container, 2 * sizeof(uint8_t), SEEK_CUR);
+            prevFileEntry = currFileEntry;
+            fread(&currFileEntry, sizeof(uint64_t), 1, container);
+        }
+
+    }
+    fflush(container);
+    //printf("_________________________________________________________\n");
+    //printHashTable(container, blockSize);
+    printf("List of free blocks:\n");
+    fseek(container, *nextFreeBlock, SEEK_SET);
+    uint64_t curr = *nextFreeBlock;
+    printf("---- %ld\n", *nextFreeBlock);
+    printf("EOF %ld\n", *eof);
+    if(curr == *eof) {
+        return;
+    }
+    fseek(container, blockSize * sizeof(char) + sizeof(int), SEEK_CUR);
+    fread(&curr, sizeof(uint64_t), 1, container);
+    while(1) {
+        if(curr == *eof) {
+        break;
+    }
+        printf("---- %ld\n", curr);
+        fseek(container, curr, SEEK_SET);
+        fseek(container, blockSize * sizeof(char) + sizeof(int), SEEK_CUR);
+        fread(&curr, sizeof(uint64_t), 1, container);
+    }
+}
+
 int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFileEntry, uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof) {
 
     // 1. Open new file
@@ -135,19 +289,24 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
         );
         return -1;
     }
+    
     uint64_t currFileEntry = *firstFileEntry;
     // 5. Write new
     if(-1 == *firstFileEntry) {
+        printf("THERE IS NO OTHER FILE IN THE FS\n");
         fseek(container, *nextFreeFileEntry, SEEK_SET);
         fwrite(inputElements[1], sizeof(char), 20, container);
         uint8_t type = 1;
         fwrite(&type, sizeof(uint8_t), 1, container);
         uint8_t is_deleted = 0;
         fwrite(&is_deleted, sizeof(uint8_t), 1, container);
-        fwrite(firstFileEntry, sizeof(uint64_t), 1, container);
         *firstFileEntry = *nextFreeFileEntry;
         currFileEntry = *nextFreeFileEntry;
-        updateNextFreeFileEntry(nextFreeBlock, nextFreeFileEntry, eof, blockSize);
+        uint64_t dummy = -1;
+        updateNextFreeFileEntry(nextFreeBlock, nextFreeFileEntry, eof, blockSize, container);
+        fseek(container, *firstFileEntry, SEEK_SET);
+        fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
+        fwrite(&dummy, sizeof(uint64_t), 1, container);
     }
     else {
         uint64_t prevFileEntry = *firstFileEntry;
@@ -170,11 +329,14 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
         fwrite(&type, sizeof(uint8_t), 1, container);
         uint8_t is_deleted = 0;
         fwrite(&is_deleted, sizeof(uint8_t), 1, container);
-        fwrite(&currFileEntry, sizeof(uint64_t), 1, container);
-        fseek(container, prevFileEntry + 20 + 2 * sizeof(uint8_t), SEEK_SET);
-        fwrite(nextFreeFileEntry, sizeof(uint64_t), 1, container);
         currFileEntry = *nextFreeFileEntry;
-        updateNextFreeFileEntry(nextFreeBlock, nextFreeFileEntry, eof, blockSize);
+        updateNextFreeFileEntry(nextFreeBlock, nextFreeFileEntry, eof, blockSize, container);
+        fseek(container, currFileEntry, SEEK_SET);
+        fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
+        uint64_t dummy = -1;
+        fwrite(&dummy, sizeof(uint64_t), 1, container);
+        fseek(container, prevFileEntry + 20 + 2 * sizeof(uint8_t), SEEK_SET);
+        fwrite(&currFileEntry, sizeof(uint64_t), 1, container);
     }
 
     // 2. Get trough the new file, splitting it into blocks along the way
@@ -237,7 +399,7 @@ int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFi
                     break;
                 }
                 offsetLastBlock = offsetCurrBlock;
-                printf("%ld\n", offsetLastBlock);
+                printf("lala %ld\n", offsetLastBlock);
                 fseek(container, sizeof(int), SEEK_CUR);
                 fread(&offsetCurrBlock, sizeof(uint64_t), 1, container);
             }

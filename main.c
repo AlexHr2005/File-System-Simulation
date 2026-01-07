@@ -55,6 +55,7 @@ void writeMetadata(FILE* container) {
 
     loadMetadata(container);
     printf("UPDATE: %d %ld %ld %ld\n", blockSize, nextFreeFileEntry, nextFreeBlock, eof);
+    
 
 }
 
@@ -147,6 +148,9 @@ void runContainer(FILE* container) {
         }
         else if(!strcmp(inputElements[0], "cat")) {
             cat(container, inputElements, &firstFileEntry, blockSize);
+        }
+        else if(!strcmp(inputElements[0], "rm")) {
+            rm(container, inputElements, &firstFileEntry, &nextFreeFileEntry, &nextFreeBlock, blockSize, &eof);
         }
         writeMetadata(container);
         fflush(container);
