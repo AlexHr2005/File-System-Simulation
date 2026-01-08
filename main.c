@@ -12,6 +12,7 @@ uint64_t firstFileEntry = -1;
 uint64_t nextFreeFileEntry = -1;
 uint64_t nextFreeBlock = -1;
 uint64_t eof = -1;
+uint64_t currentDirectory = -1;
 
 void loadMetadata(FILE* container) {
     if(-1 == blockSize) {
@@ -21,6 +22,7 @@ void loadMetadata(FILE* container) {
     if(-1 == firstFileEntry) {
         fseek(container, 4, SEEK_SET);
         fread(&firstFileEntry, sizeof(uint64_t), 1, container);
+        currentDirectory = firstFileEntry;
     }
     if(-1 == nextFreeFileEntry) {
         fseek(container, 12, SEEK_SET);
@@ -40,6 +42,9 @@ void writeMetadata(FILE* container) {
     fseek(container, 0, SEEK_SET);
     fwrite(&blockSize, sizeof(int), 1, container);
 
+    if(-1 == firstFileEntry || currentDirectory == firstFileEntry) {
+        firstFileEntry = currentDirectory;
+    }
     fwrite(&firstFileEntry, sizeof(uint64_t), 1, container);
 
     //fseek(container, 4, SEEK_SET);
@@ -53,7 +58,7 @@ void writeMetadata(FILE* container) {
 
     fflush(container);
 
-    loadMetadata(container);
+    //loadMetadata(container);
     printf("UPDATE: %d %ld %ld %ld\n", blockSize, nextFreeFileEntry, nextFreeBlock, eof);
     
 
@@ -139,21 +144,24 @@ void runContainer(FILE* container) {
         currElement[currWriteIndex] = '\0';
 
         if(!strcmp(inputElements[0], "cpin")) {
-            if(-1 == cpin(inputElements, container, blockSize, &firstFileEntry, &nextFreeBlock, &nextFreeFileEntry, &eof)) {
+            if(-1 == cpin(inputElements, container, blockSize, &currentDirectory, &nextFreeBlock, &nextFreeFileEntry, &eof)) {
                 //return;
             }
         }
         else if(!strcmp(inputElements[0], "ls")) {
-            ls(container, &firstFileEntry);
+            ls(container, &currentDirectory);
         }
         else if(!strcmp(inputElements[0], "cat")) {
-            cat(container, inputElements, &firstFileEntry, blockSize);
+            cat(container, inputElements, &currentDirectory, blockSize);
         }
         else if(!strcmp(inputElements[0], "rm")) {
-            rm(container, inputElements, &firstFileEntry, &nextFreeFileEntry, &nextFreeBlock, blockSize, &eof);
+            rm(container, inputElements, &currentDirectory, &nextFreeFileEntry, &nextFreeBlock, blockSize, &eof);
         }
         else if(!strcmp(inputElements[0], "cpout")) {
-            cpout(inputElements, container, blockSize, &firstFileEntry);
+            cpout(inputElements, container, blockSize, &currentDirectory);
+        }
+        else if(!strcmp(inputElements[0], "md")) {
+            md(inputElements, container, &currentDirectory, &nextFreeFileEntry, &nextFreeBlock, &eof, blockSize);
         }
         writeMetadata(container);
         fflush(container);

@@ -2,8 +2,8 @@
 #include <stdbool.h>
 
 enum FileType {
-    _FILE = 0,
-    _DIRECTORY = 1
+    _DIRECTORY = 0,
+    _FILE = 1,
 };
 
 struct FileEntry {
