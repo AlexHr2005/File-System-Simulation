@@ -129,7 +129,7 @@ void ls(FILE* container, uint64_t* firstFileEntry) {
         fseek(container, currFileEntry, SEEK_SET);
         char fileName[20];
         fread(fileName, sizeof(char), 20, container);
-        printf("%s\n", fileName);
+        printf("%s %ld\n", fileName, currFileEntry);
         fseek(container, 2 * sizeof(uint8_t), SEEK_CUR);
         fread(&currFileEntry, sizeof(uint64_t), 1, container);
     }

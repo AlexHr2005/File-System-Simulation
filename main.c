@@ -13,6 +13,7 @@ uint64_t nextFreeFileEntry = -1;
 uint64_t nextFreeBlock = -1;
 uint64_t eof = -1;
 uint64_t currentDirectory = -1;
+uint64_t prevDirectory = -2;
 
 void loadMetadata(FILE* container) {
     if(-1 == blockSize) {
@@ -42,9 +43,11 @@ void writeMetadata(FILE* container) {
     fseek(container, 0, SEEK_SET);
     fwrite(&blockSize, sizeof(int), 1, container);
 
-    if(-1 == firstFileEntry || currentDirectory == firstFileEntry) {
+    if(-1 == firstFileEntry || prevDirectory == -2) {
         firstFileEntry = currentDirectory;
     }
+    printf("curr directory: %ld\n", currentDirectory);
+    printf("first file %ld\n", firstFileEntry);
     fwrite(&firstFileEntry, sizeof(uint64_t), 1, container);
 
     //fseek(container, 4, SEEK_SET);
@@ -161,7 +164,10 @@ void runContainer(FILE* container) {
             cpout(inputElements, container, blockSize, &currentDirectory);
         }
         else if(!strcmp(inputElements[0], "md")) {
-            md(inputElements, container, &currentDirectory, &nextFreeFileEntry, &nextFreeBlock, &eof, blockSize);
+            md(inputElements, container, &currentDirectory, &prevDirectory, &nextFreeFileEntry, &nextFreeBlock, &eof, blockSize);
+        }
+        else if(!strcmp(inputElements[0], "rd")) {
+            rd(inputElements, container, &currentDirectory, &nextFreeFileEntry, &prevDirectory);
         }
         writeMetadata(container);
         fflush(container);
