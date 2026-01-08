@@ -6,12 +6,12 @@
 int cd(char** inputElemenents, FILE* container, uint64_t *currDirectoryStart, uint64_t* currDirectoryEntry, bool* isCurrentDirRoot, uint64_t* firstFileEntry) {
     if(!strcmp(inputElemenents[1], "..")) {
         if(-1 != *currDirectoryEntry) {
-            printf("Curr dir entry %ld\n", *currDirectoryEntry);
             fseek(container, *currDirectoryEntry, SEEK_SET);
-            fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t)  + 2 * sizeof(uint64_t), SEEK_CUR);
+            fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t)  + 1 * sizeof(uint64_t), SEEK_CUR);
+            uint64_t test;
+            fread(&test, sizeof(uint64_t), 1, container);
             fread(currDirectoryEntry, sizeof(uint64_t), 1, container);
             if(-1 == *currDirectoryEntry) {
-                printf("HERE\n");
                 *currDirectoryStart = *firstFileEntry;
                 *isCurrentDirRoot = true;
             }
@@ -75,6 +75,7 @@ int md(char** inputElements, FILE* container, uint64_t *currDirectoryStart, uint
         fseek(container, *currDirectoryStart, SEEK_SET);
         fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
         fwrite(&dummy, sizeof(uint64_t), 1, container);
+        fwrite(&dummy, sizeof(uint64_t), 1, container);
     }
     else {
         uint64_t prevFileEntry = *currDirectoryStart;
@@ -108,44 +109,57 @@ int md(char** inputElements, FILE* container, uint64_t *currDirectoryStart, uint
     }
 }
 
-void rd(char** inputElements, FILE* container, uint64_t* currDirectoryStart, uint64_t* currDirectoryEntry, uint64_t* nextFreeFileEntry) {
-    char* fileName = inputElements[1];
-    uint64_t currFileEntry = *currDirectoryStart;
-    uint64_t prevFileEntry = -1;
-    while (-1 != currFileEntry) {
-        fseek(container, currFileEntry, SEEK_SET);
+int clearDir(FILE* container, uint64_t* currDirectoryStart, uint64_t* currDirectoryEntry, uint64_t* nextFreeFileEntry, uint64_t* nextFreeBlock, int blockSize, uint64_t* eof) {
+    printf("CLEAR DIR\n");
+    uint64_t currFile = *currDirectoryStart;
+    while(-1 != currFile) {
+        printf("%ld\n", currFile);
+        fseek(container, currFile, SEEK_SET);
+        fseek(container, sizeof(char) * 20, SEEK_CUR);
+        uint8_t type;
+        printf("QQQQQQQQQQQQQQ\n");
+        fread(&type, sizeof(uint8_t), 1, container);
+        if(_DIRECTORY == type) {
+            fseek(container, sizeof(uint8_t) + sizeof(uint64_t), SEEK_CUR);
+            uint64_t firstFileInDir;
+            fread(&firstFileInDir, sizeof(uint64_t), 1, container);
+            printf("SSSSSSSSSSSSSSSSS\n");
+            if(-1 != firstFileInDir) {
+                clearDir(container, &firstFileInDir, &currFile, nextFreeFileEntry, nextFreeBlock, blockSize, eof);
+            }
+        }
+        uint64_t curr = currFile;
+        printf("PREDI\n");
+        removeFileFromContainer(container, currFile, currDirectoryEntry, &currFile, nextFreeFileEntry, nextFreeBlock, blockSize, eof, -1);
+        /*fseek(container, curr, SEEK_SET);
+        fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
+        fread(&currFile, sizeof(uint64_t), 1, container);*/
+    }
+    printf("CLEAR DIR EXIT\n");
+}
+
+void rd(char** inputElements, FILE* container, uint64_t* currDirectoryStart, uint64_t* currDirectoryEntry, uint64_t* nextFreeFileEntry, uint64_t* nextFreeBlock, int blockSize, uint64_t* eof) {
+    printf("RD\n");
+    uint64_t currFile = *currDirectoryStart;
+    while(-1 != currFile) {
+        fseek(container, currFile, SEEK_SET);
         char fileName[20];
         fread(fileName, sizeof(char), 20, container);
         if(!strcmp(fileName, inputElements[1])) {
-            fseek(container, sizeof(uint8_t), SEEK_CUR);
-            uint8_t is_deleted = 1;
-            fwrite(&is_deleted, sizeof(uint8_t), 1, container);
-
-            // removing current from list of used file entries
-            uint64_t nextFileEntry;
-            fread(&nextFileEntry, sizeof(uint64_t), 1, container);
-            if(-1 != prevFileEntry) {
-                fseek(container, prevFileEntry, SEEK_SET);
-                fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
-                fwrite(&nextFileEntry, sizeof(uint64_t), 1, container);
+            //TOTO: Check if the file is actually not a directory
+            fseek(container, 2 * sizeof(uint8_t) + sizeof(uint64_t), SEEK_CUR);
+            uint64_t firstFileInDir;
+            fread(&firstFileInDir, sizeof(uint64_t), 1, container);
+            if(-1 != firstFileInDir) {
+                clearDir(container, &firstFileInDir, &currFile, nextFreeFileEntry, nextFreeBlock, blockSize, eof);
             }
-            else {
-                *currDirectoryStart = nextFileEntry;
-                fseek(container, *currDirectoryEntry, SEEK_SET);
-                fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t) + sizeof(uint64_t), SEEK_CUR);
-                fwrite(currDirectoryStart, sizeof(uint64_t), 1, container);
-            }
-
-            // adding current to list of deleted (free to use) file entries
-            fseek(container, currFileEntry, SEEK_SET);
-            fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
-            fwrite(nextFreeFileEntry, sizeof(uint64_t), 1, container);
-            *nextFreeFileEntry = currFileEntry;
+            rm(container, inputElements, currDirectoryEntry, currDirectoryStart, nextFreeFileEntry, nextFreeBlock, blockSize, eof);
+            break;
         }
         else {
-            fseek(container, 2 * sizeof(uint8_t), SEEK_CUR);
-            prevFileEntry = currFileEntry;
-            fread(&currFileEntry, sizeof(uint64_t), 1, container);
+            fseek(container, currFile, SEEK_SET);
+            fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
+            fread(&currFile, sizeof(uint64_t), 1, container);
         }
     }
 }

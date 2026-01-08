@@ -188,16 +188,18 @@ void removeBlockFromHashTable(FILE* container, int blockSize, uint64_t block) {
     }
 }
 
-void rm(FILE* container, char** inputElements, uint64_t* currDirectoryEntry, uint64_t* firstFileEntry, uint64_t* nextFreeFileEntry, uint64_t* nextFreeBlock, int blockSize, uint64_t* eof) {
-    char* fileName = inputElements[1];
-    uint64_t currFileEntry = *firstFileEntry;
-    uint64_t prevFileEntry = -1;
-    while (-1 != currFileEntry) {
-        fseek(container, currFileEntry, SEEK_SET);
-        char fileName[20];
-        fread(fileName, sizeof(char), 20, container);
-        if(!strcmp(fileName, inputElements[1])) {
-            fseek(container, sizeof(uint8_t), SEEK_CUR);
+void removeFileFromContainer(FILE* container, uint64_t currFileEntry, uint64_t* currDirectoryEntry, uint64_t* firstFileEntry, uint64_t* nextFreeFileEntry, uint64_t* nextFreeBlock, int blockSize, uint64_t* eof, uint64_t prevFileEntry) {
+    printf("FILE TO BE REMOVED %ld\n", currFileEntry);
+    fseek(container, currFileEntry, SEEK_SET);
+    fseek(container, 20 * sizeof(char), SEEK_CUR);
+    uint8_t type;
+            fread(&type, sizeof(uint8_t), 1, container);
+            if(_DIRECTORY == type) {
+                fseek(container, 2 * sizeof(uint8_t) + sizeof(uint64_t), SEEK_CUR);
+                uint64_t dummy = -1;
+                fwrite(&dummy, sizeof(uint64_t), 1, container);
+                fseek(container, currFileEntry + 20 * sizeof(char) + sizeof(uint8_t), SEEK_SET);
+            }
             uint8_t is_deleted = 1;
             fwrite(&is_deleted, sizeof(uint8_t), 1, container);
 
@@ -211,7 +213,15 @@ void rm(FILE* container, char** inputElements, uint64_t* currDirectoryEntry, uin
             }
             else {
                 *firstFileEntry = nextFileEntry;
-                if(-1 != *currDirectoryEntry) {
+                if(_FILE == type) {
+                    if(-1 != *currDirectoryEntry) {
+                        fseek(container, *currDirectoryEntry, SEEK_SET);
+                        fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t) + sizeof(uint64_t), SEEK_CUR);
+                        fwrite(firstFileEntry, sizeof(uint64_t), 1, container);
+                    }
+                }
+                else {
+                    *firstFileEntry = nextFileEntry;
                     fseek(container, *currDirectoryEntry, SEEK_SET);
                     fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t) + sizeof(uint64_t), SEEK_CUR);
                     fwrite(firstFileEntry, sizeof(uint64_t), 1, container);
@@ -224,33 +234,52 @@ void rm(FILE* container, char** inputElements, uint64_t* currDirectoryEntry, uin
             fwrite(nextFreeFileEntry, sizeof(uint64_t), 1, container);
             *nextFreeFileEntry = currFileEntry;
 
-            // adding current's blocks to the list of free to use blocks, if they are not referenced to by any file
-            uint64_t currBlock;
-            int blockIndex = 0;
-            fread(&currBlock, sizeof(uint64_t), 1, container);
-            while(-1 != currBlock) {
-                printf("CURRENT BLOCK: %ld", currBlock);
-                fseek(container, currBlock, SEEK_SET);
-                fseek(container, blockSize * sizeof(char), SEEK_CUR);
-                int refCount;
-                fread(&refCount, sizeof(int), 1, container);
-                refCount--;
-                fseek(container, -sizeof(int), SEEK_CUR);
-                fwrite(&refCount, sizeof(int), 1, container);
-                if(0 == refCount) {
-                    removeBlockFromHashTable(container, blockSize, currBlock);
-                    fseek(container, currBlock, SEEK_SET);
-                    printf("next free block before: %ld\n", *nextFreeBlock);
-                    fseek(container, blockSize * sizeof(char) + sizeof(int), SEEK_CUR);
-                    fwrite(nextFreeBlock, sizeof(uint64_t), 1, container);
-                    *nextFreeBlock = currBlock;
-                    printf("next free block after: %ld\n", *nextFreeBlock);
-                }
-                blockIndex++;
-                fseek(container, currFileEntry, SEEK_SET);
-                fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t) + (blockIndex + 1) * sizeof(uint64_t), SEEK_CUR);
+            if(_FILE == type) {
+
+                // adding current's blocks to the list of free to use blocks, if they are not referenced to by any file
+                uint64_t currBlock;
+                int blockIndex = 0;
                 fread(&currBlock, sizeof(uint64_t), 1, container);
+                while(-1 != currBlock) {
+                    printf("CURRENT BLOCK: %ld", currBlock);
+                    fseek(container, currBlock, SEEK_SET);
+                    fseek(container, blockSize * sizeof(char), SEEK_CUR);
+                    int refCount;
+                    fread(&refCount, sizeof(int), 1, container);
+                    refCount--;
+                    fseek(container, -sizeof(int), SEEK_CUR);
+                    fwrite(&refCount, sizeof(int), 1, container);
+                    if(0 == refCount) {
+                        removeBlockFromHashTable(container, blockSize, currBlock);
+                        fseek(container, currBlock, SEEK_SET);
+                        printf("next free block before: %ld\n", *nextFreeBlock);
+                        fseek(container, blockSize * sizeof(char) + sizeof(int), SEEK_CUR);
+                        fwrite(nextFreeBlock, sizeof(uint64_t), 1, container);
+                        *nextFreeBlock = currBlock;
+                        printf("next free block after: %ld\n", *nextFreeBlock);
+                    }
+                    blockIndex++;
+                    fseek(container, currFileEntry, SEEK_SET);
+                    fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t) + (blockIndex + 1) * sizeof(uint64_t), SEEK_CUR);
+                    fread(&currBlock, sizeof(uint64_t), 1, container);
+                }
             }
+}
+
+void rm(FILE* container, char** inputElements, uint64_t* currDirectoryEntry, uint64_t* firstFileEntry, uint64_t* nextFreeFileEntry, uint64_t* nextFreeBlock, int blockSize, uint64_t* eof) {
+    printf("RM\n");
+    
+    char* fileName = inputElements[1];
+    uint64_t currFileEntry = *firstFileEntry;
+    uint64_t prevFileEntry = -1;
+    while (-1 != currFileEntry) {
+        printf("CURR FILE ENTRY RM %ld\n", currFileEntry);
+        fseek(container, currFileEntry, SEEK_SET);
+        char fileName[20];
+        fread(fileName, sizeof(char), 20, container);
+        printf("%s\n", fileName);
+        if(!strcmp(fileName, inputElements[1])) {
+            removeFileFromContainer(container, currFileEntry, currDirectoryEntry, firstFileEntry, nextFreeFileEntry, nextFreeBlock, blockSize, eof, prevFileEntry);
             break;
         }
         else {

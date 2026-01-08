@@ -177,7 +177,7 @@ void runContainer(FILE* container) {
             md(inputElements, container, &currentDirectoryStart, &currentDirectoryEntry, &nextFreeFileEntry, &nextFreeBlock, &eof, blockSize);
         }
         else if(!strcmp(inputElements[0], "rd")) {
-            rd(inputElements, container, &currentDirectoryStart, &currentDirectoryEntry, &nextFreeFileEntry);
+            rd(inputElements, container, &currentDirectoryStart, &currentDirectoryEntry, &nextFreeFileEntry, &nextFreeBlock, blockSize, &eof);
         }
         else if(!strcmp(inputElements[0], "cd")) {
             cd(inputElements, container, &currentDirectoryStart, &currentDirectoryEntry, &isCurrDirRoot, &firstFileEntry);
