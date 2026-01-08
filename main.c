@@ -12,9 +12,9 @@ uint64_t firstFileEntry = -1;
 uint64_t nextFreeFileEntry = -1;
 uint64_t nextFreeBlock = -1;
 uint64_t eof = -1;
-uint64_t currentDirectory = -1;
-uint64_t prevDirectory = -2;
-
+uint64_t currentDirectoryEntry = -1;
+uint64_t currentDirectoryStart = -1;
+bool isCurrDirRoot = true;
 void loadMetadata(FILE* container) {
     if(-1 == blockSize) {
         fseek(container, 0, SEEK_SET);
@@ -23,7 +23,7 @@ void loadMetadata(FILE* container) {
     if(-1 == firstFileEntry) {
         fseek(container, 4, SEEK_SET);
         fread(&firstFileEntry, sizeof(uint64_t), 1, container);
-        currentDirectory = firstFileEntry;
+        currentDirectoryStart = firstFileEntry;
     }
     if(-1 == nextFreeFileEntry) {
         fseek(container, 12, SEEK_SET);
@@ -43,11 +43,12 @@ void writeMetadata(FILE* container) {
     fseek(container, 0, SEEK_SET);
     fwrite(&blockSize, sizeof(int), 1, container);
 
-    if(-1 == firstFileEntry || prevDirectory == -2) {
-        firstFileEntry = currentDirectory;
+    if(-1 == firstFileEntry || true == isCurrDirRoot) {
+        firstFileEntry = currentDirectoryStart;
     }
-    printf("curr directory: %ld\n", currentDirectory);
+    printf("curr directory start: %ld\n", currentDirectoryStart);
     printf("first file %ld\n", firstFileEntry);
+    printf("curr directory entry %ld\n", currentDirectoryEntry);
     fwrite(&firstFileEntry, sizeof(uint64_t), 1, container);
 
     //fseek(container, 4, SEEK_SET);
@@ -81,7 +82,7 @@ void initializeContainer(FILE** container) {
 
     uint64_t offsetFromStart = -1; // offset of first file entry
     fwrite(&offsetFromStart, sizeof(uint64_t), 1, *container);
-    offsetFromStart = sizeof(int) + 4 * sizeof(uint64_t) + 100 * sizeof(uint64_t); // the offset of next av. place for storing file entry
+    offsetFromStart = sizeof(int) + 4 * sizeof(uint64_t) + 100 * sizeof(uint64_t); // + 20 * sizeof(char) + 2 * sizeof(uint8_t) + sizeof(uint64_t) + 1000 * sizeof(uint64_t); // the offset of next av. place for storing file entry
     fwrite(&offsetFromStart, sizeof(uint64_t), 1, *container);
     // the offset of next av. place for storing file data block
     fwrite(&offsetFromStart, sizeof(uint64_t), 1, *container);
@@ -93,6 +94,15 @@ void initializeContainer(FILE** container) {
     for(int i = 0; i < 100; i++) {
         fwrite(&offsetFromStart, sizeof(uint64_t), 1, *container);
     }
+    /*
+    char dirName[20];
+    strcpy(dirName, "\\");
+    fwrite(dirName, sizeof(char), 20, *container); // 20 B
+    uint8_t type = 0;
+    fwrite(&type, sizeof(uint8_t), 1, *container); // 1 B
+    uint8_t is_deleted = 0;
+    fwrite(&is_deleted, sizeof(uint8_t), 1, *container); // 1 B
+    fwrite(&offsetFromStart, sizeof(uint64_t), 1, *container); // 8 B*/
 
     fflush(*container);
 }
@@ -147,27 +157,30 @@ void runContainer(FILE* container) {
         currElement[currWriteIndex] = '\0';
 
         if(!strcmp(inputElements[0], "cpin")) {
-            if(-1 == cpin(inputElements, container, blockSize, &currentDirectory, &nextFreeBlock, &nextFreeFileEntry, &eof)) {
+            if(-1 == cpin(inputElements, container, blockSize, &currentDirectoryEntry, &currentDirectoryStart, &nextFreeBlock, &nextFreeFileEntry, &eof)) {
                 //return;
             }
         }
         else if(!strcmp(inputElements[0], "ls")) {
-            ls(container, &currentDirectory);
+            ls(container, &currentDirectoryStart);
         }
         else if(!strcmp(inputElements[0], "cat")) {
-            cat(container, inputElements, &currentDirectory, blockSize);
+            cat(container, inputElements, &currentDirectoryStart, blockSize);
         }
         else if(!strcmp(inputElements[0], "rm")) {
-            rm(container, inputElements, &currentDirectory, &nextFreeFileEntry, &nextFreeBlock, blockSize, &eof);
+            rm(container, inputElements, &currentDirectoryEntry, &currentDirectoryStart, &nextFreeFileEntry, &nextFreeBlock, blockSize, &eof);
         }
         else if(!strcmp(inputElements[0], "cpout")) {
-            cpout(inputElements, container, blockSize, &currentDirectory);
+            cpout(inputElements, container, blockSize, &currentDirectoryStart);
         }
         else if(!strcmp(inputElements[0], "md")) {
-            md(inputElements, container, &currentDirectory, &prevDirectory, &nextFreeFileEntry, &nextFreeBlock, &eof, blockSize);
+            md(inputElements, container, &currentDirectoryStart, &currentDirectoryEntry, &nextFreeFileEntry, &nextFreeBlock, &eof, blockSize);
         }
         else if(!strcmp(inputElements[0], "rd")) {
-            rd(inputElements, container, &currentDirectory, &nextFreeFileEntry, &prevDirectory);
+            rd(inputElements, container, &currentDirectoryStart, &currentDirectoryEntry, &nextFreeFileEntry);
+        }
+        else if(!strcmp(inputElements[0], "cd")) {
+            cd(inputElements, container, &currentDirectoryStart, &currentDirectoryEntry, &isCurrDirRoot, &firstFileEntry);
         }
         writeMetadata(container);
         fflush(container);
