@@ -152,6 +152,9 @@ void runContainer(FILE* container) {
         else if(!strcmp(inputElements[0], "rm")) {
             rm(container, inputElements, &firstFileEntry, &nextFreeFileEntry, &nextFreeBlock, blockSize, &eof);
         }
+        else if(!strcmp(inputElements[0], "cpout")) {
+            cpout(inputElements, container, blockSize, &firstFileEntry);
+        }
         writeMetadata(container);
         fflush(container);
     }

@@ -277,6 +277,52 @@ void rm(FILE* container, char** inputElements, uint64_t* firstFileEntry, uint64_
     }
 }
 
+int cpout(char** inputElements, FILE* container, int blockSize, uint64_t* firstFileEntry) {
+    FILE* dest = fopen(inputElements[2], "wb");
+    printf("%s\n", inputElements[2]);
+    if(NULL == dest) {
+        printf("File with name %s can not be created.\n", inputElements[2]);
+        return -1;
+    }
+
+    uint64_t currFile = *firstFileEntry;
+    while(-1 != currFile) {
+        fseek(container, currFile, SEEK_SET);
+        char fileName[20];
+        fread(fileName, sizeof(char), 20, container);
+        printf("curr file: %s\n", fileName);
+        if(!strcmp(fileName, inputElements[1])) {
+            char buffer[blockSize];
+            int blockIndex = 0;
+            fseek(container, 2 * sizeof(uint8_t) + sizeof(uint64_t), SEEK_CUR);
+            uint64_t currBlock;
+            printf("1\n");
+            fread(&currBlock, sizeof(uint64_t), 1, container);
+            printf("2\n");
+            while(-1 != currBlock) {
+                fseek(container, currBlock, SEEK_SET);
+                fread(buffer, sizeof(char), blockSize, container);
+                printf("curr block: %ld %s\n", currBlock, buffer);
+                fwrite(buffer, sizeof(char), blockSize, dest);
+                printf("3\n");
+                blockIndex++;
+                fseek(container, currFile, SEEK_SET);
+                fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t) + (blockIndex + 1) * sizeof(uint64_t), SEEK_CUR);
+                fread(&currBlock, sizeof(uint64_t), 1, container);
+            }
+            fclose(dest);
+            return 0;
+        }
+        else {
+            fseek(container, 2 * sizeof(uint8_t), SEEK_CUR);
+            fread(&currFile, sizeof(uint64_t), 1, container);
+        }
+    }
+    printf("File with name %s does not exist.\n", inputElements[1]);
+    fclose(dest);
+    return 1;
+}
+
 int cpin(char** inputElements, FILE* container, int blockSize, uint64_t* firstFileEntry, uint64_t* nextFreeBlock, uint64_t* nextFreeFileEntry, uint64_t* eof) {
 
     // 1. Open new file
