@@ -6,7 +6,7 @@
 #include "include/commands.h"
 
 const char containerName[] = "file_system.bin";
-char commandLineSyntax[] = "/$ ";
+char commandLineSyntax[] = "> ";
 int blockSize = -1;
 uint64_t firstFileEntry = -1;
 uint64_t nextFreeFileEntry = -1;
@@ -46,9 +46,7 @@ void writeMetadata(FILE* container) {
     if(-1 == firstFileEntry || true == isCurrDirRoot) {
         firstFileEntry = currentDirectoryStart;
     }
-    printf("curr directory start: %ld\n", currentDirectoryStart);
-    printf("first file %ld\n", firstFileEntry);
-    printf("curr directory entry %ld\n", currentDirectoryEntry);
+
     fwrite(&firstFileEntry, sizeof(uint64_t), 1, container);
 
     //fseek(container, 4, SEEK_SET);
@@ -63,7 +61,6 @@ void writeMetadata(FILE* container) {
     fflush(container);
 
     //loadMetadata(container);
-    printf("UPDATE: %d %ld %ld %ld\n", blockSize, nextFreeFileEntry, nextFreeBlock, eof);
     
 
 }
@@ -94,20 +91,11 @@ void initializeContainer(FILE** container) {
     for(int i = 0; i < 100; i++) {
         fwrite(&offsetFromStart, sizeof(uint64_t), 1, *container);
     }
-    /*
-    char dirName[20];
-    strcpy(dirName, "\\");
-    fwrite(dirName, sizeof(char), 20, *container); // 20 B
-    uint8_t type = 0;
-    fwrite(&type, sizeof(uint8_t), 1, *container); // 1 B
-    uint8_t is_deleted = 0;
-    fwrite(&is_deleted, sizeof(uint8_t), 1, *container); // 1 B
-    fwrite(&offsetFromStart, sizeof(uint64_t), 1, *container); // 8 B*/
 
     fflush(*container);
 }
 
-void runContainer(FILE* container) {
+int runContainer(FILE* container) {
     loadMetadata(container);
     char input[100];
     while (true)
@@ -181,6 +169,9 @@ void runContainer(FILE* container) {
         }
         else if(!strcmp(inputElements[0], "cd")) {
             cd(inputElements, container, &currentDirectoryStart, &currentDirectoryEntry, &isCurrDirRoot, &firstFileEntry);
+        }
+        else if(!strcmp(inputElements[0], "exit")) {
+            return 0;
         }
         writeMetadata(container);
         fflush(container);

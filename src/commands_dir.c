@@ -61,7 +61,6 @@ int md(char** inputElements, FILE* container, uint64_t *currDirectoryStart, uint
     uint64_t currFileEntry = *currDirectoryStart;
     // 5. Write new
     if(-1 == *currDirectoryStart) {
-        printf("THERE IS NO OTHER FILE IN THE FS\n");
         fseek(container, *nextFreeFileEntry, SEEK_SET);
         fwrite(inputElements[1], sizeof(char), 20, container);
         uint8_t type = 0;
@@ -110,36 +109,29 @@ int md(char** inputElements, FILE* container, uint64_t *currDirectoryStart, uint
 }
 
 int clearDir(FILE* container, uint64_t* currDirectoryStart, uint64_t* currDirectoryEntry, uint64_t* nextFreeFileEntry, uint64_t* nextFreeBlock, int blockSize, uint64_t* eof) {
-    printf("CLEAR DIR\n");
     uint64_t currFile = *currDirectoryStart;
     while(-1 != currFile) {
-        printf("%ld\n", currFile);
         fseek(container, currFile, SEEK_SET);
         fseek(container, sizeof(char) * 20, SEEK_CUR);
         uint8_t type;
-        printf("QQQQQQQQQQQQQQ\n");
         fread(&type, sizeof(uint8_t), 1, container);
         if(_DIRECTORY == type) {
             fseek(container, sizeof(uint8_t) + sizeof(uint64_t), SEEK_CUR);
             uint64_t firstFileInDir;
             fread(&firstFileInDir, sizeof(uint64_t), 1, container);
-            printf("SSSSSSSSSSSSSSSSS\n");
             if(-1 != firstFileInDir) {
                 clearDir(container, &firstFileInDir, &currFile, nextFreeFileEntry, nextFreeBlock, blockSize, eof);
             }
         }
         uint64_t curr = currFile;
-        printf("PREDI\n");
         removeFileFromContainer(container, currFile, currDirectoryEntry, &currFile, nextFreeFileEntry, nextFreeBlock, blockSize, eof, -1);
         /*fseek(container, curr, SEEK_SET);
         fseek(container, 20 * sizeof(char) + 2 * sizeof(uint8_t), SEEK_CUR);
         fread(&currFile, sizeof(uint64_t), 1, container);*/
     }
-    printf("CLEAR DIR EXIT\n");
 }
 
 void rd(char** inputElements, FILE* container, uint64_t* currDirectoryStart, uint64_t* currDirectoryEntry, uint64_t* nextFreeFileEntry, uint64_t* nextFreeBlock, int blockSize, uint64_t* eof) {
-    printf("RD\n");
     uint64_t currFile = *currDirectoryStart;
     while(-1 != currFile) {
         fseek(container, currFile, SEEK_SET);
